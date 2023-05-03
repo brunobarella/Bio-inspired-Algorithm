@@ -3,6 +3,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import collections
 
+random.seed(123)
+np.random.seed(123)
+
 # Definição do problema
 variables = ["s", "e", "n", "d", "m", "o", "r", "y"]
 problem = ["send", "more", "money"]
@@ -10,9 +13,10 @@ letters = [letter for word in problem for letter in word]
 
 # Hiperparâmetros do algoritmo genético
 POPULATION_SIZE = 100
-MAX_GENERATIONS = 100
+MAX_GENERATIONS = 50
 CROSSOVER_RATE = 0.6
 MUTATION_RATE = 0.05
+REINSERTION_RATE = 0.6
 
 # Função para gerar um indivíduo aleatório
 def generate_individual():
@@ -26,11 +30,17 @@ def fitness(individual):
 
 def roulette_selection(population, fitness_scores):
     # cria uma lista com as probabilidades de seleção de cada indivíduo
-    selection_probabilities = [score/sum(fitness_scores) for score in fitness_scores]
+    selection_probabilities = [1-(score/sum(fitness_scores)) for score in fitness_scores]
     # seleciona dois pais aleatoriamente com base nas probabilidades
     parent = random.choices(population, weights=selection_probabilities)[0]
     return parent
 
+def tournament_selection(population, fitness_scores,k=40):
+    
+    # Seleciona k indivíduos aleatórios da população
+    tournament = random.sample(fitness_scores, k)
+    # Retorna o indivíduo com o melhor fitness do torneio
+    return population[fitness_scores.index(max(tournament))]
 
 # Função para realizar o cruzamento de dois pais
 # veficar a repetição
@@ -46,39 +56,39 @@ def crossover(parent1, parent2):
 
 
 def cyclic_crossover(parent1, parent2):
-    if random.random() < CROSSOVER_RATE:
-        # obter o comprimento das palavras e garantir que são iguais
-        n = len(parent1)
-        assert n == len(parent2)
+    # if random.random() < CROSSOVER_RATE:
+    # obter o comprimento das palavras e garantir que são iguais
+    n = len(parent1)
+    assert n == len(parent2)
 
-        # escolher aleatoriamente um ponto inicial
-        start = random.randrange(n)
-        
-        lack_p1 = [i for i in range(10) if i not in parent1]
-        lack_p2 = [i for i in range(10) if i not in parent2]
-        
-        parent1 =parent1+lack_p1
-        parent2 =parent2+lack_p2
+    # escolher aleatoriamente um ponto inicial
+    start = random.randrange(n)
+    
+    lack_p1 = [i for i in range(10) if i not in parent1]
+    lack_p2 = [i for i in range(10) if i not in parent2]
+    
+    parent1 =parent1+lack_p1
+    parent2 =parent2+lack_p2
 
-        i = start    
+    i = start    
+    value_i_p1 = parent1[i]
+    parent1[i] = parent2[i]
+    parent2[i] = value_i_p1
+    
+    iteration = 0
+    while len([item for item, count in collections.Counter(parent1).items() if count > 1])>0:#start!=i or iteration==0:
+        last_i = i 
+        i = [idx for idx, value in enumerate(parent1) if value == parent1[i]]
+        i = [x for x in i if x!=last_i][0]
         value_i_p1 = parent1[i]
         parent1[i] = parent2[i]
         parent2[i] = value_i_p1
-        
-        iteration = 0
-        while len([item for item, count in collections.Counter(parent1).items() if count > 1])>0:#start!=i or iteration==0:
-            last_i = i 
-            i = [idx for idx, value in enumerate(parent1) if value == parent1[i]]
-            i = [x for x in i if x!=last_i][0]
-            value_i_p1 = parent1[i]
-            parent1[i] = parent2[i]
-            parent2[i] = value_i_p1
-            iteration += 1
+        iteration += 1
 
-        if len(parent1)!=n:
-            for i in range(len(parent1)-n):
-                parent1.pop(9-i)
-                parent2.pop(9-i)
+    if len(parent1)!=n:
+        for i in range(len(parent1)-n):
+            parent1.pop(9-i)
+            parent2.pop(9-i)
     
     return parent1, parent2
 
@@ -104,18 +114,21 @@ def ordered_reinsertion(population, fitnesses):#, parents, children
     # # adicione os pais selecionados à população final
     # final_population += selected_parents
     
-    final_population = sorted_population[:int(POPULATION_SIZE*0.4)]
+    final_population = sorted_population[:int(POPULATION_SIZE*(1-REINSERTION_RATE))]
     return final_population
 
 # Função para executar o algoritmo genético
 def genetic_algorithm():
     # Gerar população inicial
     population = [generate_individual() for _ in range(POPULATION_SIZE)]
-    # fitnesses = [fitness(individual) for individual in population]
-    # list(filter(lambda score: score ==1, [row[5] for row in population]))
-    # list(filter(lambda score: score <1000, fitnesses))
+    fitnesses = [fitness(individual) for individual in population]
+    list(filter(lambda score: score ==1, [row[5] for row in population]))
+    list(filter(lambda score: score <1000, fitnesses))
+
     generations = 0
 
+    ger_fitness=[]
+    
     pais = []
     filhos = []
     while generations < MAX_GENERATIONS:
@@ -124,6 +137,7 @@ def genetic_algorithm():
 
         # Verificar se a solução foi encontrada
         best_fitness = min(fitnesses)
+        ger_fitness.append(generations)
         if best_fitness == 0:
             best_individual = population[fitnesses.index(best_fitness)]
             mapping = dict(zip(variables, best_individual))
@@ -131,15 +145,17 @@ def genetic_algorithm():
                        f"{mapping['m']}{mapping['o']}{mapping['r']}{mapping['e']} = " \
                        f"{mapping['m']}{mapping['o']}{mapping['n']}{mapping['e']}{mapping['y']} "\
                        f" fitness = {best_fitness}"
-            return solution, pais, filhos
+            return solution, pais, filhos, ger_fitness, best_fitness==0
 
         population2 = []
-                
-        for _ in range(int(POPULATION_SIZE*0.6)):
+
+        while len(population2) <= int(POPULATION_SIZE*REINSERTION_RATE):
         
             # Selecionar dois pais usando a roleta
-            parent1 = roulette_selection(population, fitnesses)
-            parent2 = roulette_selection(population, fitnesses)
+            # parent1 = roulette_selection(population, fitnesses)
+            # parent2 = roulette_selection(population, fitnesses)
+            parent1 = tournament_selection(population, fitnesses)
+            parent2 = tournament_selection(population, fitnesses)
             
             pais.append(fitness(parent1))
             pais.append(fitness(parent2))
@@ -165,7 +181,7 @@ def genetic_algorithm():
         
         population = population2+population_2
         
-        print(f"Geração: {generations}")
+        print(f"Geração: {generations} qnt_ind: {len(population)}")
         # Se o número máximo de gerações for alcançado, retornar a melhor solução encontrada
         fitnesses = [fitness(individual) for individual in population]
         best_fitness = min(fitnesses)
@@ -188,13 +204,27 @@ def genetic_algorithm():
                f"{mapping['m']}{mapping['o']}{mapping['n']}{mapping['e']}{mapping['y']} "\
                f" fitness = {best_fitness}"
 
-    return solution, pais, filhos
+    return solution, pais, filhos, ger_fitness, best_fitness==0
 
 if __name__ == '__main__':
-    solution, pais, filhos = genetic_algorithm()
-    print(solution)
+    
+    qnt_ger =[]
+    qnt_melhores=0
+    for i in range(1000):
+        solution, pais, filhos, ger_fitness, best = genetic_algorithm()
+        qnt_ger.append(len(ger_fitness))
+        qnt_melhores +=best
+        
+    print(qnt_ger)
+    print(sum(qnt_ger)/1000)
+    print(qnt_melhores)
+    print(qnt_melhores/1000)
+        
+    # print(solution)
 
-    plt.plot(pais)
-    plt.show()
-    plt.plot(filhos)
-    plt.show()
+    # plt.plot(pais)
+    # plt.show()
+    # plt.plot(filhos)
+    # plt.show()
+    # plt.plot(ger_fitness)
+    # plt.show()
